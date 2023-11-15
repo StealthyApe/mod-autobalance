@@ -27,7 +27,7 @@
 * Description: This script is intended to scale based on number of players,
 * instance mobs & world bosses' level, health, mana, and damage.
 */
-
+#include <iostream>
 #include "Configuration/Config.h"
 #include "Unit.h"
 #include "Chat.h"
@@ -44,6 +44,8 @@
 #include "ScriptMgrMacros.h"
 #include "Group.h"
 #include "Log.h"
+
+using namespace std;
 
 #if AC_COMPILER == AC_COMPILER_GNU
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
@@ -987,6 +989,14 @@ class AutoBalance_UnitScript : public UnitScript
         if (!EnableGlobal)
             return originalDuration;
 
+        // ensure that both the target and the caster are defined
+        if (!target || !caster)
+            return originalDuration;
+
+        // if the aura wasn't cast just now, don't change it
+        if (aura->GetDuration() != aura->GetMaxDuration())
+            return originalDuration;
+
         // if the target isn't a player or the caster is a player, return the original duration
         if (!target->IsPlayer() || caster->IsPlayer())
             return originalDuration;
@@ -1207,32 +1217,44 @@ public:
 
     void ModifyCreatureAttributes(Creature* creature, bool resetSelLevel = false)
     {
+        cout << "_______________________\n";
+        cout << creature->GetGUID().GetRawValue()<< '\n';
         // make sure that we're enabled globally
-        if (!EnableGlobal)
+        if (!EnableGlobal){
+            cout << "Enable Global Exit\n";
             return;
+        }
 
         // make sure we have a creature and that it's assigned to a map
-        if (!creature || !creature->GetMap())
+        if (!creature || !creature->GetMap()){
+            cout << "Not a creature or creature not assigned to a map\n";
             return;
-
+        }
         // check to make sure that the creature's map is enabled for scaling
         AutoBalanceMapInfo *mapABInfo=creature->GetMap()->CustomData.GetDefault<AutoBalanceMapInfo>("AutoBalanceMapInfo");
-        if (!mapABInfo->enabled)
+        if (!mapABInfo->enabled){
+            cout << "Creature not available for scaling!\n";
             return;
+        }
 
         // if this isn't a dungeon or a battleground, make no changes
-        if (!(creature->GetMap()->IsDungeon() || creature->GetMap()->IsBattleground()))
+        if (!(creature->GetMap()->IsDungeon() || creature->GetMap()->IsBattleground())){
+            cout << "Not a dungeon\n";
             return;
+        }
 
         // if this is a pet or summon, make no changes
         if (((creature->IsHunterPet() || creature->IsPet() || creature->IsSummon()) && creature->IsControlledByPlayer()))
         {
+            cout << "Not a pet\n";
             return;
         }
 
         // if a map level is not set, make no changes
-        if (!mapABInfo->mapLevel)
+        if (!mapABInfo->mapLevel){
+            cout << "Map level not set\n";
             return;
+        }
 
         CreatureTemplate const *creatureTemplate = creature->GetCreatureTemplate();
 
@@ -1240,6 +1262,7 @@ public:
         uint32 mapId = instanceMap->GetEntry()->MapID;
         if (perDungeonScalingEnabled() && !isEnabledDungeon(mapId))
         {
+            cout << "per Dungeon scaling not enabled\n";
             return;
         }
         uint32 maxNumberOfPlayers = instanceMap->GetMaxPlayers();
@@ -1247,9 +1270,10 @@ public:
 
         if (forcedNumPlayers > 0)
             maxNumberOfPlayers = forcedNumPlayers; // Force maxNumberOfPlayers to be changed to match the Configuration entries ForcedID2, ForcedID5, ForcedID10, ForcedID20, ForcedID25, ForcedID40
-        else if (forcedNumPlayers == 0)
+        else if (forcedNumPlayers == 0){
+            cout << "forcedNumPlayers is 0!\n";
             return; // forcedNumPlayers 0 means that the creature is contained in DisabledID -> no scaling
-
+        }
         AutoBalanceCreatureInfo *creatureABInfo=creature->CustomData.GetDefault<AutoBalanceCreatureInfo>("AutoBalanceCreatureInfo");
 
         // force resetting selected level.
@@ -1261,8 +1285,10 @@ public:
             creatureABInfo->selectedLevel = 0; // force a recalculation
         }
 
-        if (!creature->IsAlive())
+        if (!creature->IsAlive()){
+            cout << "Creature is dead\n";
             return;
+        }
 
         uint32 curCount=mapABInfo->playerCount + PlayerCountDifficultyOffset;
         if (perDungeonScalingEnabled())
@@ -1277,20 +1303,28 @@ public:
                 if (checkLevelOffset(mapABInfo->mapLevel + bonusLevel, creature->getLevel()) &&
                     checkLevelOffset(creatureABInfo->selectedLevel, creature->getLevel()) &&
                     creatureABInfo->instancePlayerCount == curCount) {
+                    cout << "Creature is already scaled!\n";
                     return;
                 }
             } else if (creatureABInfo->instancePlayerCount == curCount) {
+                    cout << "An error i don't underesetand\n";
                     return;
             }
         }
 
         creatureABInfo->instancePlayerCount = curCount;
 
-        if (!creatureABInfo->instancePlayerCount) // no players in map, do not modify attributes
-            return;
+        if (!creatureABInfo->instancePlayerCount) // no players in map, do not modify attributesP
+            {
+                cout << "There's no player in this map!\n";
+                return;
+        }
+            
 
-        if (!sABScriptMgr->OnBeforeModifyAttributes(creature, creatureABInfo->instancePlayerCount))
+        if (!sABScriptMgr->OnBeforeModifyAttributes(creature, creatureABInfo->instancePlayerCount)){
+            cout << "Misc Exit 2\n";
             return;
+        }
 
         uint8 originalLevel = creatureTemplate->maxlevel;
 
@@ -1300,8 +1334,10 @@ public:
         getAreaLevel(creature->GetMap(), creature->GetAreaId(), areaMinLvl, areaMaxLvl);
 
         // avoid level changing for critters and special creatures (spell summons etc.) in instances
-        if (originalLevel <= 1 && areaMinLvl >= 5)
+        if (originalLevel <= 1 && areaMinLvl >= 5){
+            cout << "I'm a critter!\n";
             return;
+        }
 
         if (LevelScaling && creature->GetMap()->IsDungeon() && !checkLevelOffset(level, originalLevel)) {  // change level only within the offsets and when in dungeon/raid
             if (level != creatureABInfo->selectedLevel || creatureABInfo->selectedLevel != creature->getLevel()) {
